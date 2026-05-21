@@ -3,4 +3,4 @@ services:
     name: network-intrusion-detection
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python dashboard.py
+    startCommand: gunicorn dashboard:app

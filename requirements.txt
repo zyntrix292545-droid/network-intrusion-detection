@@ -6,3 +6,4 @@ joblib
 colorama
 requests
 psutil
+gunicorn

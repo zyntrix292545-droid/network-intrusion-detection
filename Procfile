@@ -1,1 +1,1 @@
-web: python -u dashboard.py
+web: gunicorn dashboard:app
