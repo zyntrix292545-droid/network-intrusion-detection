@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: network-intrusion-detection
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python dashboard.py
