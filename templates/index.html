@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEC-OPS Matrix Intrusion Dashboard</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg-base: #030303;
+            --bg-surface: rgba(4, 18, 8, 0.85);
+            --bg-card: rgba(8, 28, 14, 0.45);
+            --color-matrix: #00ff66;
+            --color-matrix-dim: #0d5f30;
+            --color-matrix-glow: rgba(0, 255, 102, 0.4);
+            --color-normal: #00ff66;
+            --color-medium: #ffaa00;
+            --color-high: #ff0055;
+            --color-text: #e2fce8;
+            --color-text-muted: #62a373;
+            --border-glow: 1px solid rgba(0, 255, 102, 0.25);
+            --font-mono: 'Share Tech Mono', monospace;
+            --font-sans: 'Inter', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--color-text);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Matrix Scanlines & Grid HUD Overlay */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%), 
+                        linear-gradient(90deg, rgba(0, 255, 102, 0.03), rgba(0, 0, 0, 0) 95%);
+            background-size: 100% 4px, 6px 100%;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0.8;
+        }
+
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 50% 50%, transparent 60%, #000000 95%),
+                linear-gradient(rgba(0, 255, 102, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 102, 0.02) 1px, transparent 1px);
+            background-size: 100% 100%, 30px 30px, 30px 30px;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        header {
+            background-color: var(--bg-surface);
+            border-bottom: 2px solid var(--color-matrix-dim);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 0 20px rgba(0, 255, 102, 0.15);
+            position: relative;
+            z-index: 10;
+        }
+
+        .header-title-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .cyber-logo {
+            font-size: 1.8rem;
+            color: var(--color-matrix);
+            text-shadow: 0 0 10px var(--color-matrix-glow);
+        }
+
+        h1 {
+            font-family: var(--font-mono);
+            font-size: 1.6rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--color-matrix);
+            text-shadow: 0 0 8px var(--color-matrix-glow);
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 25px;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 255, 102, 0.1);
+            border: 1px solid var(--color-matrix-dim);
+            padding: 5px 12px;
+            border-radius: 4px;
+            color: var(--color-matrix);
+        }
+
+        .status-indicator-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--color-matrix);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--color-matrix);
+            animation: pulse 1.5s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.3; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1.1); }
+        }
+
+        /* Sound Alert Activation Bar */
+        #audio-enable-banner {
+            background-color: rgba(255, 170, 0, 0.15);
+            border: 1px solid var(--color-medium);
+            padding: 10px;
+            text-align: center;
+            font-size: 0.9rem;
+            font-family: var(--font-mono);
+            color: var(--color-medium);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 10;
+        }
+        #audio-enable-banner:hover {
+            background-color: rgba(255, 170, 0, 0.3);
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.6);
+        }
+
+        /* Flashing Anomaly Banner */
+        #anomaly-banner {
+            display: none;
+            background: linear-gradient(90deg, #ff0033 0%, #660011 50%, #ff0033 100%);
+            border-bottom: 3px solid #ff0055;
+            padding: 15px;
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: white;
+            letter-spacing: 5px;
+            text-shadow: 0 0 15px #ff0055;
+            animation: flashWarning 1.2s infinite;
+            position: relative;
+            z-index: 9;
+        }
+
+        @keyframes flashWarning {
+            0%, 100% {
+                background: linear-gradient(90deg, #ff0033 0%, #660011 50%, #ff0033 100%);
+                box-shadow: inset 0 0 20px #ff0055;
+            }
+            50% {
+                background: linear-gradient(90deg, #ff3366 0%, #990022 50%, #ff3366 100%);
+                box-shadow: inset 0 0 40px #ff0088, 0 0 25px rgba(255, 0, 85, 0.6);
+            }
+        }
+
+        /* Main Container Layout */
+        .dashboard-container {
+            max-width: 1600px;
+            margin: 20px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 20px;
+            z-index: 5;
+            position: relative;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Glassmorphic Cyber Panels */
+        .cyber-panel {
+            background-color: var(--bg-surface);
+            border: var(--border-glow);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 255, 102, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Cybernetic corner decoration */
+        .cyber-panel::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            width: 10px; height: 10px;
+            border-top: 2px solid var(--color-matrix);
+            border-left: 2px solid var(--color-matrix);
+        }
+
+        .cyber-panel::after {
+            content: "";
+            position: absolute;
+            bottom: 0; right: 0;
+            width: 10px; height: 10px;
+            border-bottom: 2px solid var(--color-matrix);
+            border-right: 2px solid var(--color-matrix);
+        }
+
+        .panel-title {
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            color: var(--color-matrix);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--color-matrix-dim);
+            padding-bottom: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Metric Widgets */
+        .metric-group {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 255, 102, 0.1);
+            border-radius: 6px;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            border-color: var(--color-matrix);
+            box-shadow: 0 0 10px rgba(0, 255, 102, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-family: var(--font-mono);
+            font-size: 1.4rem;
+            color: var(--color-matrix);
+            font-weight: bold;
+            text-shadow: 0 0 5px var(--color-matrix-glow);
+        }
+
+        /* Threat Gauge Widgets */
+        .gauge-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 0;
+            position: relative;
+        }
+
+        .threat-display {
+            font-family: var(--font-mono);
+            font-size: 1.8rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin-top: -10px;
+            text-align: center;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(0, 255, 102, 0.5);
+        }
+
+        .threat-low {
+            color: var(--color-normal);
+            text-shadow: 0 0 12px var(--color-normal);
+        }
+
+        .threat-medium {
+            color: var(--color-medium);
+            text-shadow: 0 0 12px var(--color-medium);
+        }
+
+        .threat-high {
+            color: var(--color-high);
+            text-shadow: 0 0 12px var(--color-high);
+            animation: blinkHigh 0.8s infinite alternate;
+        }
+
+        @keyframes blinkHigh {
+            0% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Threat Level Virtual LED Indicators */
+        .led-panel {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            background: rgba(0,0,0,0.4);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(0, 255, 102, 0.05);
+            margin-top: 10px;
+        }
+
+        .led-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            color: var(--color-text-muted);
+        }
+
+        .led-circle {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: #222;
+            border: 1px solid #444;
+            transition: all 0.3s ease;
+        }
+
+        .led-low.active {
+            background-color: var(--color-normal);
+            box-shadow: 0 0 10px var(--color-normal), 0 0 20px var(--color-normal);
+        }
+
+        .led-medium.active {
+            background-color: var(--color-medium);
+            box-shadow: 0 0 10px var(--color-medium), 0 0 20px var(--color-medium);
+        }
+
+        .led-high.active {
+            background-color: var(--color-high);
+            box-shadow: 0 0 10px var(--color-high), 0 0 20px var(--color-high);
+        }
+
+        /* Right Panel Layout (Charts and Table) */
+        .right-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .chart-box {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 255, 102, 0.1);
+            border-radius: 6px;
+            padding: 12px;
+            height: 220px;
+            position: relative;
+        }
+
+        /* Logs Table Styles */
+        .table-panel {
+            flex-grow: 1;
+        }
+
+        .table-header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .btn-export {
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            background-color: transparent;
+            border: 1px solid var(--color-matrix);
+            color: var(--color-matrix);
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 5px rgba(0, 255, 102, 0.1);
+        }
+
+        .btn-export:hover {
+            background-color: var(--color-matrix);
+            color: black;
+            box-shadow: 0 0 15px var(--color-matrix-glow);
+            font-weight: 600;
+        }
+
+        .table-scroll-container {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 255, 102, 0.1);
+            border-radius: 6px;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        /* Scrollbar customizing */
+        .table-scroll-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .table-scroll-container::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.5);
+        }
+        .table-scroll-container::-webkit-scrollbar-thumb {
+            background: var(--color-matrix-dim);
+            border-radius: 4px;
+        }
+        .table-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: var(--color-matrix);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            text-align: left;
+        }
+
+        th {
+            background-color: rgba(13, 95, 48, 0.4);
+            color: var(--color-matrix);
+            padding: 10px 15px;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-bottom: 2px solid var(--color-matrix-dim);
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 8px 15px;
+            border-bottom: 1px solid rgba(0, 255, 102, 0.05);
+            color: var(--color-text);
+        }
+
+        tr:hover {
+            background-color: rgba(0, 255, 102, 0.05);
+        }
+
+        .text-anomaly {
+            color: var(--color-high) !important;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(255, 0, 85, 0.3);
+        }
+
+        .no-data-msg {
+            text-align: center;
+            padding: 30px;
+            color: var(--color-text-muted);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sound Unlock Banner -->
+    <div id="audio-enable-banner" onclick="unlockAudio()">
+        <i class="fa-solid fa-volume-high"></i> SYSTEM ALARM MUTED: Click anywhere on this dashboard to enable the browser audio alarm engine.
+    </div>
+
+    <!-- Intrusion Flashing Banner -->
+    <div id="anomaly-banner">
+        <i class="fa-solid fa-triangle-exclamation"></i> CRITICAL THREAT DETECTED - INTRUSION ACTIVE <i class="fa-solid fa-triangle-exclamation"></i>
+    </div>
+
+    <header>
+        <div class="header-title-container">
+            <i class="fa-solid fa-shield-halved cyber-logo"></i>
+            <div>
+                <h1>SEC-OPS Anomaly Intrusion Console</h1>
+            </div>
+        </div>
+        <div class="header-meta">
+            <div class="status-pill">
+                <div class="status-indicator-dot" id="system-status-dot"></div>
+                <span id="system-status-text">LISTENING</span>
+            </div>
+            <div>
+                <span>HOST:</span> <span style="color: var(--color-matrix)" id="live-host">127.0.0.1</span>
+            </div>
+            <div>
+                <span>TIME:</span> <span style="color: var(--color-matrix)" id="live-time">--:--:--</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+        
+        <!-- Left Column: Metrics & Threat Gauge -->
+        <div class="cyber-panel">
+            <div class="panel-title">
+                <span>Threat Gauge</span>
+                <i class="fa-solid fa-gauge-high"></i>
+            </div>
+            
+            <div class="gauge-container">
+                <svg width="200" height="120" viewBox="0 0 200 120">
+                    <!-- Semi-circle track -->
+                    <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#102516" stroke-width="12" stroke-linecap="round" />
+                    <!-- Gauge sectors -->
+                    <path d="M 20 100 A 80 80 0 0 1 73.3 46.7" fill="none" stroke="#00ff66" stroke-width="12" stroke-linecap="round" opacity="0.35" id="gauge-low" />
+                    <path d="M 73.3 46.7 A 80 80 0 0 1 126.7 46.7" fill="none" stroke="#ffaa00" stroke-width="12" stroke-linecap="round" opacity="0.35" id="gauge-med" />
+                    <path d="M 126.7 46.7 A 80 80 0 0 1 180 100" fill="none" stroke="#ff0055" stroke-width="12" stroke-linecap="round" opacity="0.35" id="gauge-high" />
+                    
+                    <!-- Needle -->
+                    <line x1="100" y1="100" x2="100" y2="40" stroke="#00ff66" stroke-width="3" stroke-linecap="round" id="gauge-needle" style="transform-origin: 100px 100px; transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1); transform: rotate(-90deg);" />
+                    <circle cx="100" cy="100" r="8" fill="#00ff66" id="gauge-center" />
+                </svg>
+                <div class="threat-display" id="threat-level-text">LOW</div>
+            </div>
+
+            <!-- Virtual LED indicators -->
+            <div class="led-panel">
+                <div class="led-item">
+                    <div class="led-circle led-low active" id="led-l"></div>
+                    <span>LOW</span>
+                </div>
+                <div class="led-item">
+                    <div class="led-circle led-medium" id="led-m"></div>
+                    <span>MED</span>
+                </div>
+                <div class="led-item">
+                    <div class="led-circle led-high" id="led-h"></div>
+                    <span>HIGH</span>
+                </div>
+            </div>
+
+            <div class="panel-title" style="margin-top: 15px;">
+                <span>System Metrics</span>
+                <i class="fa-solid fa-microchip"></i>
+            </div>
+
+            <div class="metric-group">
+                <div class="metric-card">
+                    <div class="metric-label">CPU Load</div>
+                    <div class="metric-value" id="val-cpu">0.0%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">RAM Usage</div>
+                    <div class="metric-value" id="val-ram">0.0%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Bytes Sent (Δ)</div>
+                    <div class="metric-value" id="val-netsent" style="font-size: 1.15rem; color: #a3ffcc;">0 B</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Bytes Recv (Δ)</div>
+                    <div class="metric-value" id="val-netrecv" style="font-size: 1.15rem; color: #a3ffcc;">0 B</div>
+                </div>
+            </div>
+            
+            <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-text-muted); text-align: center; margin-top: 10px;">
+                SYS LAST REPORT: <span id="val-timestamp">N/A</span>
+            </div>
+        </div>
+
+        <!-- Right Column: Graphs and Table Log -->
+        <div class="right-layout">
+            
+            <!-- Live Charts Panel -->
+            <div class="cyber-panel">
+                <div class="panel-title">
+                    <span>Real-Time Monitor (3s interval)</span>
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+                
+                <div class="charts-grid">
+                    <div class="chart-box">
+                        <canvas id="cpuChart"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <canvas id="ramChart"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <canvas id="networkChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Threat History Logs Panel -->
+            <div class="cyber-panel table-panel">
+                <div class="table-header-container">
+                    <div class="panel-title" style="border:none; margin:0; padding:0;">
+                        <span>Threat Intrusion History</span>
+                    </div>
+                    <a href="/api/export" class="btn-export" target="_blank">
+                        <i class="fa-solid fa-file-export"></i> EXPORT CSV LOGS
+                    </a>
+                </div>
+
+                <div class="table-scroll-container">
+                    <table id="logs-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>CPU Usage</th>
+                                <th>RAM Usage</th>
+                                <th>Bytes Sent (Δ)</th>
+                                <th>Bytes Recv (Δ)</th>
+                                <th>Threat Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-tbody">
+                            <tr>
+                                <td colspan="6" class="no-data-msg">Initializing database logs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // System clock
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('live-time').innerText = now.toTimeString().split(' ')[0];
+        }, 1000);
+
+        // Sound Synthesis Setup using native browser Web Audio API
+        let audioCtx = null;
+        let isAudioUnlocked = false;
+
+        function unlockAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            isAudioUnlocked = true;
+            
+            // Hide notification banner
+            const banner = document.getElementById('audio-enable-banner');
+            banner.style.display = 'none';
+        }
+
+        function playAlertSound() {
+            if (!isAudioUnlocked || !audioCtx) return;
+
+            // Generate synthesis double-beep
+            try {
+                const now = audioCtx.currentTime;
+                
+                // First beep (Low Pitch)
+                const osc1 = audioCtx.createOscillator();
+                const gain1 = audioCtx.createGain();
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(680, now);
+                gain1.gain.setValueAtTime(0.08, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                osc1.connect(gain1);
+                gain1.connect(audioCtx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.15);
+
+                // Second beep (High Pitch Warning)
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.type = 'sawtooth';
+                osc2.frequency.setValueAtTime(1150, now + 0.1);
+                gain2.gain.setValueAtTime(0.12, now + 0.1);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.start(now + 0.1);
+                osc2.stop(now + 0.35);
+            } catch (e) {
+                console.error("Audio synth error:", e);
+            }
+        }
+
+        // Custom chart.js dynamic configurations
+        const chartOptions = (title, label, color) => ({
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                title: {
+                    display: true,
+                    text: title,
+                    color: '#00ff66',
+                    font: { family: 'Share Tech Mono', size: 14 }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(0, 255, 102, 0.05)' },
+                    ticks: { color: '#62a373', font: { family: 'Share Tech Mono', size: 9 } }
+                },
+                y: {
+                    grid: { color: 'rgba(0, 255, 102, 0.05)' },
+                    ticks: { color: '#62a373', font: { family: 'Share Tech Mono', size: 10 } }
+                }
+            }
+        });
+
+        // CPU Chart Init
+        const ctxCpu = document.getElementById('cpuChart').getContext('2d');
+        const cpuChart = new Chart(ctxCpu, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    borderColor: '#00ff66',
+                    backgroundColor: 'rgba(0, 255, 102, 0.15)',
+                    fill: true,
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 1,
+                    pointHoverRadius: 4
+                }]
+            },
+            options: chartOptions('CPU RESOURCE LOAD (%)', 'CPU %', '#00ff66')
+        });
+
+        // RAM Chart Init
+        const ctxRam = document.getElementById('ramChart').getContext('2d');
+        const ramChart = new Chart(ctxRam, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    borderColor: '#00ccff',
+                    backgroundColor: 'rgba(0, 204, 255, 0.15)',
+                    fill: true,
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 1,
+                    pointHoverRadius: 4
+                }]
+            },
+            options: chartOptions('RAM USAGE RATIO (%)', 'RAM %', '#00ccff')
+        });
+
+        // Network Chart Init
+        const ctxNet = document.getElementById('networkChart').getContext('2d');
+        const networkChart = new Chart(ctxNet, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Sent (KB)',
+                        data: [],
+                        borderColor: '#ff00aa',
+                        backgroundColor: 'rgba(255, 0, 170, 0.02)',
+                        borderWidth: 1.5,
+                        tension: 0.3,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Recv (KB)',
+                        data: [],
+                        borderColor: '#ffea00',
+                        backgroundColor: 'rgba(255, 234, 0, 0.02)',
+                        borderWidth: 1.5,
+                        tension: 0.3,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: { color: '#62a373', font: { family: 'Share Tech Mono', size: 9 } }
+                    },
+                    title: {
+                        display: true,
+                        text: 'NETWORK ACTIVITY (KB DELTA)',
+                        color: '#00ff66',
+                        font: { family: 'Share Tech Mono', size: 14 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(0, 255, 102, 0.05)' },
+                        ticks: { color: '#62a373', font: { family: 'Share Tech Mono', size: 9 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(0, 255, 102, 0.05)' },
+                        ticks: { color: '#62a373', font: { family: 'Share Tech Mono', size: 10 } }
+                    }
+                }
+            }
+        });
+
+        // Max number of points in graphs
+        const MAX_DATA_POINTS = 12;
+
+        function updateCharts(timeStr, cpu, ram, sentBytes, recvBytes) {
+            // Convert bytes to Kilobytes for graph readability
+            const sentKB = parseFloat((sentBytes / 1024).toFixed(2));
+            const recvKB = parseFloat((recvBytes / 1024).toFixed(2));
+            const shortTime = timeStr.split(' ')[1] || timeStr;
+
+            // CPU
+            cpuChart.data.labels.push(shortTime);
+            cpuChart.data.datasets[0].data.push(cpu);
+            if (cpuChart.data.labels.length > MAX_DATA_POINTS) {
+                cpuChart.data.labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+            }
+            cpuChart.update('none');
+
+            // RAM
+            ramChart.data.labels.push(shortTime);
+            ramChart.data.datasets[0].data.push(ram);
+            if (ramChart.data.labels.length > MAX_DATA_POINTS) {
+                ramChart.data.labels.shift();
+                ramChart.data.datasets[0].data.shift();
+            }
+            ramChart.update('none');
+
+            // Network
+            networkChart.data.labels.push(shortTime);
+            networkChart.data.datasets[0].data.push(sentKB);
+            networkChart.data.datasets[1].data.push(recvKB);
+            if (networkChart.data.labels.length > MAX_DATA_POINTS) {
+                networkChart.data.labels.shift();
+                networkChart.data.datasets[0].data.shift();
+                networkChart.data.datasets[1].data.shift();
+            }
+            networkChart.update('none');
+        }
+
+        // Helper to format byte sizes
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Polling Data Task
+        let prevAnomalyActive = false;
+
+        async function pollMetrics() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+
+                // Format values in display Cards
+                document.getElementById('val-cpu').innerText = data.cpu.toFixed(1) + '%';
+                document.getElementById('val-ram').innerText = data.ram.toFixed(1) + '%';
+                document.getElementById('val-netsent').innerText = formatBytes(data.net_sent);
+                document.getElementById('val-netrecv').innerText = formatBytes(data.net_recv);
+                document.getElementById('val-timestamp').innerText = data.timestamp;
+
+                // Set local IP
+                if (data.timestamp !== "N/A" && document.getElementById('system-status-text').innerText === "LISTENING") {
+                    document.getElementById('system-status-text').innerText = "LIVE MONITOR";
+                }
+
+                // If new metrics arrived, feed them to chart plotter
+                if (data.timestamp !== "N/A") {
+                    updateCharts(data.timestamp, data.cpu, data.ram, data.net_sent, data.net_recv);
+                }
+
+                // Map threat assessment indicators
+                let threatLevel = "LOW";
+                let rotationDeg = -60; // default LOW needle angle
+
+                // Map model scores to LOW/MEDIUM/HIGH sectors
+                if (data.anomaly_active) {
+                    threatLevel = "HIGH";
+                    rotationDeg = 60; // HIGH angle
+                } else if (data.score < 0.05) {
+                    threatLevel = "MEDIUM";
+                    rotationDeg = 0; // MEDIUM angle
+                }
+
+                // Update Threat gauge styling
+                const needle = document.getElementById('gauge-needle');
+                const display = document.getElementById('threat-level-text');
+                const banner = document.getElementById('anomaly-banner');
+
+                needle.style.transform = `rotate(${rotationDeg}deg)`;
+                display.innerText = threatLevel;
+
+                // Color classes matching LEDs and displays
+                display.className = "threat-display";
+                if (threatLevel === "LOW") display.classList.add('threat-low');
+                if (threatLevel === "MEDIUM") display.classList.add('threat-medium');
+                if (threatLevel === "HIGH") display.classList.add('threat-high');
+
+                // LEDs configuration
+                document.getElementById('led-l').className = "led-circle led-low" + (threatLevel === "LOW" ? " active" : "");
+                document.getElementById('led-m').className = "led-circle led-medium" + (threatLevel === "MEDIUM" ? " active" : "");
+                document.getElementById('led-h').className = "led-circle led-high" + (threatLevel === "HIGH" ? " active" : "");
+
+                // Needle colors matching threat category
+                const fillColors = { "LOW": "#00ff66", "MEDIUM": "#ffaa00", "HIGH": "#ff0055" };
+                needle.setAttribute('stroke', fillColors[threatLevel]);
+                document.getElementById('gauge-center').setAttribute('fill', fillColors[threatLevel]);
+
+                // Manage anomaly flashing banner and sound alerts
+                if (data.anomaly_active) {
+                    banner.style.display = 'block';
+                    // Play synthesizer warning beep
+                    playAlertSound();
+                    
+                    // If transition into alarm state, reload logs history
+                    if (!prevAnomalyActive) {
+                        pollHistory();
+                    }
+                    prevAnomalyActive = true;
+                } else {
+                    banner.style.display = 'none';
+                    prevAnomalyActive = false;
+                }
+
+            } catch (err) {
+                console.error("Poller Error:", err);
+                document.getElementById('system-status-text').innerText = "DISCONNECTED";
+                document.getElementById('system-status-dot').style.backgroundColor = "#ff0055";
+                document.getElementById('system-status-dot').style.boxShadow = "0 0 10px #ff0055";
+            }
+        }
+
+        // Fetch logs history from backend database
+        async function pollHistory() {
+            try {
+                const response = await fetch('/api/history');
+                const logs = await response.json();
+                const tbody = document.getElementById('logs-tbody');
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="no-data-msg">No historical anomalies recorded. System secure.</td></tr>';
+                    return;
+                }
+
+                let html = '';
+                logs.forEach(row => {
+                    html += `
+                        <tr>
+                            <td>${row.Timestamp}</td>
+                            <td class="text-anomaly">${parseFloat(row.CPU_Usage_Pct).toFixed(1)}%</td>
+                            <td class="text-anomaly">${parseFloat(row.RAM_Usage_Pct).toFixed(1)}%</td>
+                            <td>${formatBytes(parseInt(row.Bytes_Sent_Delta))}</td>
+                            <td>${formatBytes(parseInt(row.Bytes_Received_Delta))}</td>
+                            <td class="text-anomaly">${parseFloat(row.Threat_Score).toFixed(4)}</td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            } catch (err) {
+                console.error("History fetch error:", err);
+            }
+        }
+
+        // Start polling immediately and on 3s intervals
+        pollMetrics();
+        pollHistory();
+        setInterval(pollMetrics, 3000);
+        
+        // Poll logs history slower unless triggered by alarm state change
+        setInterval(pollHistory, 10000);
+    </script>
+</body>
+</html>
