@@ -145,8 +145,11 @@ def report():
 @app.route("/api/data", methods=["GET"])
 def get_data():
     """Returns the current real-time state as JSON for dashboard polling."""
+    global use_simulator
     with data_lock:
-        return jsonify(current_status)
+        res_data = current_status.copy()
+        res_data["use_simulator"] = use_simulator
+        return jsonify(res_data)
 
 @app.route("/api/history", methods=["GET"])
 def get_history():

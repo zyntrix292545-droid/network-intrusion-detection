@@ -751,8 +751,16 @@
                     ticks: { color: '#62a373', font: { family: 'Share Tech Mono', size: 9 } }
                 },
                 y: {
+                    min: 0,
+                    max: 100,
                     grid: { color: 'rgba(0, 255, 102, 0.05)' },
-                    ticks: { color: '#62a373', font: { family: 'Share Tech Mono', size: 10 } }
+                    ticks: {
+                        color: '#62a373',
+                        font: { family: 'Share Tech Mono', size: 10 },
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
                 }
             }
         });
@@ -900,89 +908,177 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
+        // Client-side simulation state and generator
+        let clientSimulatorActiveAttack = 0;
+        
+        function getSimulatedData() {
+            const now = new Date();
+            const timestamp = now.getFullYear() + '-' + 
+                String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                String(now.getDate()).padStart(2, '0') + ' ' + 
+                now.toTimeString().split(' ')[0];
+            
+            if (clientSimulatorActiveAttack <= 0) {
+                // 2.5% chance per tick (every 3s) to trigger an anomaly
+                if (Math.random() < 0.025) {
+                    clientSimulatorActiveAttack = Math.floor(Math.random() * 3) + 3; // lasts 3-5 ticks (9-15 seconds)
+                    console.log("[DEMO MODE] Activating client-side simulated cyber-intrusion threat!");
+                }
+            }
+            
+            let cpu, ram, net_sent, net_recv, prediction, score;
+            
+            if (clientSimulatorActiveAttack > 0) {
+                // Anomaly state
+                cpu = Math.floor(80 + Math.random() * 19); // 80 - 98% (whole numbers)
+                ram = Math.floor(75 + Math.random() * 18); // 75 - 92% (whole numbers)
+                // bytes sent/recv (random high values)
+                const sentKB = 1000 + Math.random() * 4000;
+                const recvKB = 1500 + Math.random() * 6500;
+                net_sent = Math.floor(sentKB * 1024);
+                net_recv = Math.floor(recvKB * 1024);
+                prediction = -1;
+                score = -0.52 + Math.random() * 0.21; // -0.52 to -0.31
+                clientSimulatorActiveAttack--;
+            } else {
+                // Normal state: realistic random values
+                // "between 20 and 80 for CPU and 50 and 75 for RAM as whole numbers"
+                cpu = Math.floor(Math.random() * 60) + 20; // 20 - 80 (whole numbers)
+                ram = Math.floor(Math.random() * 25) + 50; // 50 - 75 (whole numbers)
+                // Bytes sent/recv (random KB values)
+                const sentKB = 5 + Math.random() * 145; // 5 - 150 KB
+                const recvKB = 10 + Math.random() * 240; // 10 - 250 KB
+                net_sent = Math.floor(sentKB * 1024);
+                net_recv = Math.floor(recvKB * 1024);
+                prediction = 1;
+                score = 0.06 + Math.random() * 0.29; // 0.06 to 0.35
+            }
+            
+            return {
+                timestamp: timestamp,
+                cpu: cpu,
+                ram: ram,
+                net_sent: net_sent,
+                net_recv: net_recv,
+                prediction: prediction,
+                score: score,
+                anomaly_active: (prediction === -1),
+                use_simulator: true
+            };
+        }
+
+        function applyMetricsToUI(data) {
+            // Format values in display Cards as whole numbers
+            document.getElementById('val-cpu').innerText = Math.round(data.cpu) + '%';
+            document.getElementById('val-ram').innerText = Math.round(data.ram) + '%';
+            document.getElementById('val-netsent').innerText = formatBytes(data.net_sent);
+            document.getElementById('val-netrecv').innerText = formatBytes(data.net_recv);
+            document.getElementById('val-timestamp').innerText = data.timestamp;
+
+            // Set system status text and dot color
+            const statusDot = document.getElementById('system-status-dot');
+            const statusText = document.getElementById('system-status-text');
+            
+            if (data.timestamp !== "N/A") {
+                if (data.use_simulator) {
+                    statusText.innerText = "DEMO MODE (SIMULATED)";
+                    statusDot.style.backgroundColor = "#00ff66";
+                    statusDot.style.boxShadow = "0 0 10px #00ff66";
+                } else {
+                    statusText.innerText = "LIVE MONITOR";
+                    statusDot.style.backgroundColor = "#00ff66";
+                    statusDot.style.boxShadow = "0 0 10px #00ff66";
+                }
+            }
+
+            // If metrics arrived, feed them to chart plotter
+            if (data.timestamp !== "N/A") {
+                updateCharts(data.timestamp, data.cpu, data.ram, data.net_sent, data.net_recv);
+            }
+
+            // Map threat assessment indicators
+            let threatLevel = "LOW";
+            let rotationDeg = -60; // default LOW needle angle
+
+            // Map model scores to LOW/MEDIUM/HIGH sectors
+            if (data.anomaly_active) {
+                threatLevel = "HIGH";
+                rotationDeg = 60; // HIGH angle
+            } else if (data.score < 0.05) {
+                threatLevel = "MEDIUM";
+                rotationDeg = 0; // MEDIUM angle
+            }
+
+            // Update Threat gauge styling
+            const needle = document.getElementById('gauge-needle');
+            const display = document.getElementById('threat-level-text');
+            const banner = document.getElementById('anomaly-banner');
+
+            needle.style.transform = `rotate(${rotationDeg}deg)`;
+            display.innerText = threatLevel;
+
+            // Color classes matching LEDs and displays
+            display.className = "threat-display";
+            if (threatLevel === "LOW") display.classList.add('threat-low');
+            if (threatLevel === "MEDIUM") display.classList.add('threat-medium');
+            if (threatLevel === "HIGH") display.classList.add('threat-high');
+
+            // LEDs configuration
+            document.getElementById('led-l').className = "led-circle led-low" + (threatLevel === "LOW" ? " active" : "");
+            document.getElementById('led-m').className = "led-circle led-medium" + (threatLevel === "MEDIUM" ? " active" : "");
+            document.getElementById('led-h').className = "led-circle led-high" + (threatLevel === "HIGH" ? " active" : "");
+
+            // Needle colors matching threat category
+            const fillColors = { "LOW": "#00ff66", "MEDIUM": "#ffaa00", "HIGH": "#ff0055" };
+            needle.setAttribute('stroke', fillColors[threatLevel]);
+            document.getElementById('gauge-center').setAttribute('fill', fillColors[threatLevel]);
+
+            // Manage anomaly flashing banner and sound alerts
+            if (data.anomaly_active) {
+                banner.style.display = 'block';
+                // Play synthesizer warning beep
+                playAlertSound();
+                
+                // If transition into alarm state, reload logs history
+                if (!prevAnomalyActive) {
+                    pollHistory();
+                }
+                prevAnomalyActive = true;
+            } else {
+                banner.style.display = 'none';
+                prevAnomalyActive = false;
+            }
+        }
+
         // Polling Data Task
         let prevAnomalyActive = false;
 
         async function pollMetrics() {
             try {
                 const response = await fetch('/api/data');
-                const data = await response.json();
+                let data = await response.json();
 
-                // Format values in display Cards
-                document.getElementById('val-cpu').innerText = data.cpu.toFixed(1) + '%';
-                document.getElementById('val-ram').innerText = data.ram.toFixed(1) + '%';
-                document.getElementById('val-netsent').innerText = formatBytes(data.net_sent);
-                document.getElementById('val-netrecv').innerText = formatBytes(data.net_recv);
-                document.getElementById('val-timestamp').innerText = data.timestamp;
-
-                // Set local IP
-                if (data.timestamp !== "N/A" && document.getElementById('system-status-text').innerText === "LISTENING") {
-                    document.getElementById('system-status-text').innerText = "LIVE MONITOR";
+                // If backend is in simulator mode, or hasn't received real metrics yet, override with client-side simulated moving data
+                if (data.use_simulator || data.timestamp === "N/A" || (data.cpu === 0 && data.ram === 0)) {
+                    data = getSimulatedData();
                 }
 
-                // If new metrics arrived, feed them to chart plotter
-                if (data.timestamp !== "N/A") {
-                    updateCharts(data.timestamp, data.cpu, data.ram, data.net_sent, data.net_recv);
-                }
-
-                // Map threat assessment indicators
-                let threatLevel = "LOW";
-                let rotationDeg = -60; // default LOW needle angle
-
-                // Map model scores to LOW/MEDIUM/HIGH sectors
-                if (data.anomaly_active) {
-                    threatLevel = "HIGH";
-                    rotationDeg = 60; // HIGH angle
-                } else if (data.score < 0.05) {
-                    threatLevel = "MEDIUM";
-                    rotationDeg = 0; // MEDIUM angle
-                }
-
-                // Update Threat gauge styling
-                const needle = document.getElementById('gauge-needle');
-                const display = document.getElementById('threat-level-text');
-                const banner = document.getElementById('anomaly-banner');
-
-                needle.style.transform = `rotate(${rotationDeg}deg)`;
-                display.innerText = threatLevel;
-
-                // Color classes matching LEDs and displays
-                display.className = "threat-display";
-                if (threatLevel === "LOW") display.classList.add('threat-low');
-                if (threatLevel === "MEDIUM") display.classList.add('threat-medium');
-                if (threatLevel === "HIGH") display.classList.add('threat-high');
-
-                // LEDs configuration
-                document.getElementById('led-l').className = "led-circle led-low" + (threatLevel === "LOW" ? " active" : "");
-                document.getElementById('led-m').className = "led-circle led-medium" + (threatLevel === "MEDIUM" ? " active" : "");
-                document.getElementById('led-h').className = "led-circle led-high" + (threatLevel === "HIGH" ? " active" : "");
-
-                // Needle colors matching threat category
-                const fillColors = { "LOW": "#00ff66", "MEDIUM": "#ffaa00", "HIGH": "#ff0055" };
-                needle.setAttribute('stroke', fillColors[threatLevel]);
-                document.getElementById('gauge-center').setAttribute('fill', fillColors[threatLevel]);
-
-                // Manage anomaly flashing banner and sound alerts
-                if (data.anomaly_active) {
-                    banner.style.display = 'block';
-                    // Play synthesizer warning beep
-                    playAlertSound();
-                    
-                    // If transition into alarm state, reload logs history
-                    if (!prevAnomalyActive) {
-                        pollHistory();
-                    }
-                    prevAnomalyActive = true;
-                } else {
-                    banner.style.display = 'none';
-                    prevAnomalyActive = false;
-                }
+                applyMetricsToUI(data);
 
             } catch (err) {
                 console.error("Poller Error:", err);
-                document.getElementById('system-status-text').innerText = "DISCONNECTED";
-                document.getElementById('system-status-dot').style.backgroundColor = "#ff0055";
-                document.getElementById('system-status-dot').style.boxShadow = "0 0 10px #ff0055";
+                
+                // If server is offline/sleeping on Render, fallback to client-side simulator
+                // so the user still gets a gorgeous interactive demo!
+                const fallbackData = getSimulatedData();
+                fallbackData.use_simulator = true; // Mark as simulated
+                
+                applyMetricsToUI(fallbackData);
+                
+                // Set special status to show offline simulation status
+                document.getElementById('system-status-text').innerText = "DEMO MODE (OFFLINE)";
+                document.getElementById('system-status-dot').style.backgroundColor = "#ffaa00";
+                document.getElementById('system-status-dot').style.boxShadow = "0 0 10px #ffaa00";
             }
         }
 
